@@ -1,7 +1,11 @@
 package com.bskyb.tv;
 
+import static com.bskyb.tv.enums.ParentalControlEnum.FIFTEEN;
+import static com.bskyb.tv.enums.ParentalControlEnum.U;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
@@ -13,11 +17,18 @@ import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.runners.MockitoJUnitRunner;
 
+import com.bskyb.tv.enums.ParentalControlEnum;
+import com.bskyb.tv.exception.TechnicalFailureException;
+import com.bskyb.tv.exception.TitleNotFoundException;
+import com.bskyb.tv.service.MovieService;
+import com.bskyb.tv.service.ParentalControlService;
+import com.bskyb.tv.service.impl.ParentalControlServiceImpl;
+
 @RunWith(MockitoJUnitRunner.class)
 public class ParentalControlServiceTest {
 	private ParentalControlService parentalControlServiceTest;
 	private String movieId;
-	private String parentalControlPreference;
+	private String customerParentalControlLevelPreference;
 	@Mock
 	private MovieService movieService;
 
@@ -28,39 +39,63 @@ public class ParentalControlServiceTest {
 
 	@After
 	public void tearDown() throws TitleNotFoundException, TechnicalFailureException {
-		verify(movieService).getParentalControlLevel(movieId);
 		verifyNoMoreInteractions(movieService);
 	}
 
 	@Test
-	public void whenParentalControlLevelLessThenOrEqualToParentalControlPrefThenCanWatchMovie() throws Exception {
-		parentalControlPreference = "15";
-		when(movieService.getParentalControlLevel(movieId)).thenReturn("U");
-		boolean allowed = parentalControlServiceTest.canWatchMovie(parentalControlPreference, movieId);
+	public void canWatch_whenMovieParentalControlLevelEqualToCustomerParentalControlLevelPref() throws Exception {
+		customerParentalControlLevelPreference = FIFTEEN.name();
+		when(movieService.getParentalControlLevel(movieId)).thenReturn(FIFTEEN.name());
+		boolean allowed = parentalControlServiceTest.canWatchMovie(customerParentalControlLevelPreference, movieId);
 		assertTrue(allowed);
+		verify(movieService).getParentalControlLevel(movieId);
 	}
 
 	@Test
-	public void whenParentalControlLevelGreaterThenParentalControlPrefThenCanNotWatchMovie() throws Exception {
-		parentalControlPreference = "15";
-		when(movieService.getParentalControlLevel(movieId)).thenReturn("18");
-		boolean allowed = parentalControlServiceTest.canWatchMovie(parentalControlPreference, movieId);
+	public void canWatch_whenMovieParentalControlLevelLessThenCustomerParentalControlLevelPref() throws Exception {
+		customerParentalControlLevelPreference = FIFTEEN.name();
+		when(movieService.getParentalControlLevel(movieId)).thenReturn(U.name());
+		boolean allowed = parentalControlServiceTest.canWatchMovie(customerParentalControlLevelPreference, movieId);
+		assertTrue(allowed);
+		verify(movieService).getParentalControlLevel(movieId);
+	}
+
+	@Test
+	public void cannotWatch_whenParentalControlLevelGreaterThenParentalControlLevelPref() throws Exception {
+		customerParentalControlLevelPreference = FIFTEEN.name();
+
+		when(movieService.getParentalControlLevel(movieId)).thenReturn(ParentalControlEnum.EIGHTEEN.name());
+		boolean allowed = parentalControlServiceTest.canWatchMovie(customerParentalControlLevelPreference, movieId);
 		assertFalse(allowed);
-
-	}
-
-	@Test(expected = Exception.class)
-	public void whenMovieIdNotPresentThenThrowTitleNotFoundException() throws Exception {
-		parentalControlPreference = "15";
-		when(movieService.getParentalControlLevel(movieId)).thenThrow(TitleNotFoundException.class);
-		parentalControlServiceTest.canWatchMovie(parentalControlPreference, movieId);
+		verify(movieService).getParentalControlLevel(movieId);
 	}
 
 	@Test
-	public void whenTechnicalErrorOccurThenCannotWatchMovie() throws Exception {
-		parentalControlPreference = "15";
+	public void throwTitleNotFoundException_whenMovieIdNotPresent() throws Exception {
+		customerParentalControlLevelPreference = FIFTEEN.name();
+		when(movieService.getParentalControlLevel(movieId)).thenThrow(TitleNotFoundException.class);
+		try {
+			parentalControlServiceTest.canWatchMovie(customerParentalControlLevelPreference, movieId);
+			fail("Expected Exception.");
+		} catch (Exception expected) {
+			assertEquals("Movie not found", expected.getMessage());
+		}
+		verify(movieService).getParentalControlLevel(movieId);
+	}
+
+	@Test
+	public void cannotWatch_whenTechnicalErrorOccur() throws Exception {
+		customerParentalControlLevelPreference = FIFTEEN.name();
 		when(movieService.getParentalControlLevel(movieId)).thenThrow(TechnicalFailureException.class);
-		boolean allowed = parentalControlServiceTest.canWatchMovie(parentalControlPreference, movieId);
+		boolean allowed = parentalControlServiceTest.canWatchMovie(customerParentalControlLevelPreference, movieId);
+		assertFalse(allowed);
+		verify(movieService).getParentalControlLevel(movieId);
+	}
+
+	@Test
+	public void isFailSafe_whenServiceDown() throws Exception {
+		parentalControlServiceTest = new ParentalControlServiceImpl(null);
+		boolean allowed = parentalControlServiceTest.canWatchMovie(customerParentalControlLevelPreference, movieId);
 		assertFalse(allowed);
 	}
 }
